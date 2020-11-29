@@ -1,0 +1,46 @@
+New-ADOrganizationalUnit -Name "GG" -Path "DC=ITNET-112,DC=pri" -ProtectedFromAccidentalDeletion $false
+Get-ADOrganizationalUnit -Filter * | select-object name, distinguishedname
+New-ADGroup -GroupScope Global -Name "GG_HomeFolders" -Path "OU=GG,DC=ITNET-112,DC=pri"
+
+#The following block of code will get executed multiple times (or whatever the value of $total is set to.
+1..20 |foreach { 
+$userName = "Employee$_"
+Write-Host "Creating user $userName " 
+
+New-ADUser -AccountPassword (ConvertTo-SecureString "Password01" -AsPlainText -Force) `
+-Name "$userName" `
+-Enabled $true `
+-Path "OU=TempOU,DC=ITNET-112,DC=pri" `
+-SamAccountName "$userName" `
+-UserPrincipalName ($userName + "@ITNET-112.pri")
+}
+
+New-Item -Path "C:\" -Name "Home" -ItemType Directory
+New-SmbShare -Path "C:\Home" -Name "Home$" -FullAccess "Domain Admins","GG_HomeFolders"
+#Get-SmbShareAccess -Name 'Home$'
+
+Get-ADUser -Filter * -SearchBase "OU=TempOU,DC=ITNET-112,DC=pri" | ForEach-Object {
+Add-ADGroupMember -Identity 'GG_HomeFolders' -Members $_
+}
+
+Get-ADUser -Filter * -SearchBase "OU=TempOU,DC=ITNET-112,DC=pri" | ForEach-Object {
+$HomeDirectory = '\\Server2016-1\Home$\'+$_.SamAccountName
+Set-ADUser -Identity $_.SamAccountName -HomeDirectory $HomeDirectory -HomeDrive H
+#region Set NTFS Permissions
+$homeShare = New-Item -path $HomeDirectory -ItemType Directory -force #Create User's Folder
+
+#Modify NTFS permissions so that each user has Modify permissions of his/her folder
+$acl = Get-Acl $homeShare
+$FileSystemRights = [System.Security.AccessControl.FileSystemRights]"Modify"
+$AccessControlType = [System.Security.AccessControl.AccessControlType]::Allow
+$InheritanceFlags = [System.Security.AccessControl.InheritanceFlags]"ContainerInherit, ObjectInherit"
+$PropagationFlags = [System.Security.AccessControl.PropagationFlags]"None"
+$AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule ($_.SID, $FileSystemRights, $InheritanceFlags, $PropagationFlags, $AccessControlType)
+$acl.AddAccessRule($AccessRule)
+Set-Acl -Path $homeShare -AclObject $acl
+
+Write-Host ("HomeDirectory created for $_.SamAccountName at $HomeDirectory")
+#endregion
+}
+
+#Change permission of C:\Home so that GG_Homefolder group has Read Access to this folder only
