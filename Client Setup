@@ -1,0 +1,27 @@
+#Configure Windows 10 Client
+Get-NetIPConfiguration
+    $env:computername
+    Rename-Computer -NewName Client1
+        
+    #Set Time Zone 
+    Tzutil.exe /?
+    Tzutil.exe /g
+    Tzutil.exe /s "Central Standard Time" 
+    
+Set-NetFirewallProfile -Enabled False
+    
+Get-NetIPAddress  #Inreface Alias was 12
+New-netIPAddress -IPAddress 192.168.20.252 -PrefixLength 24 -DefaultGateway 192.168.20.1 -InterfaceIndex 12 
+
+Get-NetConnectionProfile
+Set-NetConnectionProfile -InterfaceIndex 12 -NetworkCategory Private
+Enable-PSRemoting
+
+Restart-computer -Force 
+
+Get-NetIPAddress
+
+#On Remote Server
+    Get-Item WSMan:\localhost\Client\TrustedHosts
+    Set-item WSMAN:\Localhost\Client\TrustedHosts -value * -Force
+    Enter-PSSession -ComputerName 192.168.20.252 -Credential "Admin" 
